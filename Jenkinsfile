@@ -1,30 +1,69 @@
 pipeline {
     agent any
 
+    environment {
+        APP_NAME = 'cicd-demo-service'
+        ARTIFACT_NAME = 'cicd-demo-service.jar'
+    }
+
     stages {
 
-        stage('Checkout') {
+        stage('Prepare') {
             steps {
-                echo 'Source code checked out successfully'
+                sh '''
+                    chmod +x mvnw
+                    java -version
+                '''
             }
         }
 
         stage('Build') {
             steps {
-                sh '''
-                    chmod +x mvnw
-                    ./mvnw clean package -DskipTests
-                '''
+                sh './mvnw clean compile'
             }
         }
 
         stage('Test') {
             steps {
+                sh './mvnw test'
+            }
+        }
+
+        stage('Package') {
+            steps {
+                sh './mvnw package -DskipTests'
+            }
+        }
+
+        stage('Verify Artifact') {
+            steps {
                 sh '''
-                    chmod +x mvnw
-                    ./mvnw test
+                    echo "=== Build Artifacts ==="
+                    ls -lh target/
+
+                    test -f target/${ARTIFACT_NAME}
                 '''
             }
+        }
+
+        stage('Archive Artifact') {
+            steps {
+                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'CI pipeline completed successfully.'
+        }
+
+        failure {
+            echo 'CI pipeline failed.'
+        }
+
+        always {
+            echo 'Pipeline execution completed.'
         }
     }
 }
