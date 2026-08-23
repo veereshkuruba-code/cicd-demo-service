@@ -12,6 +12,8 @@ pipeline {
             steps {
                 sh '''
                     chmod +x mvnw
+
+                    echo "=== Java Version ==="
                     java -version
                 '''
             }
