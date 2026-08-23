@@ -31,7 +31,11 @@ pipeline {
 
         stage('Package') {
             steps {
-                sh './mvnw package -DskipTests'
+                sh '''
+                    ./mvnw package -DskipTests
+
+                    cp target/${APP_NAME}-*.jar target/${ARTIFACT_NAME}
+                '''
             }
         }
 
@@ -42,13 +46,15 @@ pipeline {
                     ls -lh target/
 
                     test -f target/${ARTIFACT_NAME}
+
+                    echo "Artifact verification successful."
                 '''
             }
         }
 
         stage('Archive Artifact') {
             steps {
-                archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+                archiveArtifacts artifacts: 'target/cicd-demo-service.jar', fingerprint: true
             }
         }
     }
