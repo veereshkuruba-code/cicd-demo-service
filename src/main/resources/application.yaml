@@ -1,0 +1,10 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: cicd-demo-service
+
+app:
+  version: 1.0.0
+  build-number: local
