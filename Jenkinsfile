@@ -2,41 +2,31 @@ pipeline {
     agent any
 
     environment {
-        APP_NAME = 'cicd-demo-service'
-        ARTIFACT_NAME = 'cicd-demo-service.jar'
+        APPLICATION_SERVER = '172.31.23.245'
     }
 
     stages {
 
-        stage('Prepare') {
+        stage('Checkout') {
             steps {
-                sh '''
-                    chmod +x mvnw
-
-                    echo "=== Java Version ==="
-                    java -version
-                '''
+                echo 'Source code checked out successfully'
             }
         }
 
         stage('Build') {
             steps {
-                sh './mvnw clean compile'
+                sh '''
+                    chmod +x mvnw
+                    ./mvnw clean package -DskipTests
+                '''
             }
         }
 
         stage('Test') {
             steps {
-                sh './mvnw test'
-            }
-        }
-
-        stage('Package') {
-            steps {
                 sh '''
-                    ./mvnw package -DskipTests
-
-                    cp target/${APP_NAME}-*.jar target/${ARTIFACT_NAME}
+                    chmod +x mvnw
+                    ./mvnw test
                 '''
             }
         }
@@ -47,31 +37,28 @@ pipeline {
                     echo "=== Build Artifacts ==="
                     ls -lh target/
 
-                    test -f target/${ARTIFACT_NAME}
-
-                    echo "Artifact verification successful."
+                    echo "=== Verifying JAR ==="
+                    test -f target/cicd-demo-service-*.jar
                 '''
             }
         }
 
-        stage('Archive Artifact') {
+        stage('Test Application Server Connection') {
             steps {
-                archiveArtifacts artifacts: 'target/cicd-demo-service.jar', fingerprint: true
+                sshagent(credentials: ['application-server-ssh']) {
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no \
+                        deploy@${APPLICATION_SERVER} \
+                        "hostname && whoami"
+                    '''
+                }
             }
         }
-    }
 
-    post {
-        success {
-            echo 'CI pipeline completed successfully.'
-        }
-
-        failure {
-            echo 'CI pipeline failed.'
-        }
-
-        always {
-            echo 'Pipeline execution completed.'
+        stage('Pipeline Complete') {
+            steps {
+                echo 'CI pipeline and application server connectivity test completed successfully.'
+            }
         }
     }
 }
