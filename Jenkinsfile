@@ -62,5 +62,18 @@ pipeline{
         '''
             }
         }
+
+        stage('Build Application'){
+
+            steps{
+                sh'''
+                    echo "====Building Application"
+                    ./mvnw clean package -DskipTests
+                    
+                    echo 
+                    echo "===== Build Completed Successfully ====="
+                '''
+            }
+        }
     }
 }
