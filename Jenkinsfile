@@ -115,5 +115,17 @@ pipeline{
         '''
             }
         }
+
+        stage('Archive Artifact') {
+
+            steps {
+
+                archiveArtifacts(
+                        artifacts: 'target/cicd-demo-service-*.jar',
+                        excludes: 'target/*.jar.original',
+                        fingerprint: true
+                )
+            }
+        }
     }
 }
