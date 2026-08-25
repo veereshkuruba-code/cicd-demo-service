@@ -37,5 +37,15 @@ pipeline{
         '''
             }
         }
+
+        stage('Compile Application') {
+            steps {
+                sh '''
+            echo "===== Compiling Application ====="
+
+            ./mvnw clean compile
+        '''
+            }
+        }
     }
 }
