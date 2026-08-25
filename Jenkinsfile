@@ -75,5 +75,45 @@ pipeline{
                 '''
             }
         }
+
+        stage('Verify Artifact') {
+
+            steps {
+
+                sh '''
+            echo "===== Verifying Build Artifact ====="
+
+            echo
+            echo "===== Target Directory Contents ====="
+            ls -lh target/
+
+            echo
+            echo "===== Checking Application JAR ====="
+
+            JAR_FILE=$(find target \
+                -maxdepth 1 \
+                -type f \
+                -name 'cicd-demo-service-*.jar' \
+                ! -name '*.original' \
+                | head -n 1)
+
+            if [ -z "$JAR_FILE" ]; then
+                echo "ERROR: Application JAR not found"
+                exit 1
+            fi
+
+            echo "Application JAR found:"
+            echo "$JAR_FILE"
+
+            echo
+            echo "===== Artifact Details ====="
+            ls -lh "$JAR_FILE"
+
+            echo
+            echo "===== SHA-256 Checksum ====="
+            sha256sum "$JAR_FILE"
+        '''
+            }
+        }
     }
 }
