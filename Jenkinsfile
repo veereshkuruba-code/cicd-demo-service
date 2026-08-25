@@ -17,27 +17,26 @@ pipeline{
             }
         }
 
-        stage('Verify Build Environment'){
+        stage('Verify Build Environment') {
 
-            steps{
+            steps {
 
-                sh'''
-                echo "====java version====="
-                java --version
-                
-                echo 
-                echo "==== Making maven wrapper Executable===="
-                chmod +x mvnw
-                
-                echo
-                echo "====== maven version===="
-                ./mvnw --version
-                
-                echo
-                echo "=====git version===="
-                git --version
-                
-                '''
+                sh '''
+            echo "===== Java Version ====="
+            java --version
+
+            echo
+            echo "===== Making Maven Wrapper Executable ====="
+            chmod +x mvnw
+
+            echo
+            echo "===== Maven Version ====="
+            ./mvnw --version
+
+            echo
+            echo "===== Git Version ====="
+            git --version
+        '''
             }
         }
     }
