@@ -1,0 +1,331 @@
+
+
+pipeline {
+
+    agent any
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        buildDiscarder(
+            logRotator(
+                numToKeepStr: '10'
+            )
+        )
+    }
+
+    environment {
+
+        APP_NAME = 'cicd-demo-service'
+
+        ARTIFACT_NAME = 'cicd-demo-service.jar'
+
+        DEPLOY_SERVER = '172.31.23.245'
+
+        DEPLOY_USER = 'deploy'
+
+        DEPLOY_PATH = '/tmp'
+
+        SSH_CREDENTIALS = 'application-server-ssh'
+
+        VERSION = "${BUILD_NUMBER}"
+    }
+
+    stages {
+
+        /*
+         * =====================================================
+         * CHECKOUT
+         * =====================================================
+         *
+         * Jenkins automatically checks out the repository
+         * when Pipeline script is configured from SCM.
+         *
+         * This stage is mainly for visibility in the UI.
+         */
+
+        stage('Checkout') {
+
+            steps {
+
+                echo 'Source code checked out successfully'
+
+                sh '''
+                    echo "=== Git Information ==="
+
+                    git branch --show-current
+
+                    git rev-parse --short HEAD
+                '''
+            }
+        }
+
+
+        /*
+         * =====================================================
+         * BUILD
+         * =====================================================
+         */
+
+        stage('Build') {
+
+            steps {
+
+                sh '''
+                    echo "=== Building Application ==="
+
+                    chmod +x mvnw
+
+                    ./mvnw clean compile
+                '''
+            }
+        }
+
+
+        /*
+         * =====================================================
+         * TEST
+         * =====================================================
+         */
+
+        stage('Test') {
+
+            steps {
+
+                sh '''
+                    echo "=== Running Tests ==="
+
+                    chmod +x mvnw
+
+                    ./mvnw test
+                '''
+            }
+
+            post {
+
+                always {
+
+                    junit allowEmptyResults: true,
+                          testResults: 'target/surefire-reports/*.xml'
+                }
+            }
+        }
+
+
+        /*
+         * =====================================================
+         * PACKAGE
+         * =====================================================
+         */
+
+        stage('Package') {
+
+            steps {
+
+                sh '''
+                    echo "=== Packaging Application ==="
+
+                    ./mvnw package -DskipTests
+                '''
+            }
+        }
+
+
+        /*
+         * =====================================================
+         * ARTIFACT VALIDATION
+         * =====================================================
+         */
+
+        stage('Validate Artifact') {
+
+            steps {
+
+                script {
+
+                    def jarFile = sh(
+                        script: """
+                            find target \
+                            -maxdepth 1 \
+                            -type f \
+                            -name '*.jar' \
+                            ! -name '*.original' \
+                            | head -1
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    if (!jarFile) {
+
+                        error('Application JAR was not found')
+                    }
+
+                    env.JAR_FILE = jarFile
+                }
+
+                sh '''
+                    echo "=== Artifact Information ==="
+
+                    echo "Artifact: $JAR_FILE"
+
+                    ls -lh "$JAR_FILE"
+
+                    echo
+
+                    echo "=== SHA-256 Checksum ==="
+
+                    sha256sum "$JAR_FILE"
+                '''
+            }
+        }
+
+
+        /*
+         * =====================================================
+         * PREPARE DEPLOYMENT ARTIFACT
+         * =====================================================
+         *
+         * Give the artifact a stable name so the deployment
+         * script does not depend on Maven version naming.
+         */
+
+        stage('Prepare Artifact') {
+
+            steps {
+
+                sh '''
+                    echo "=== Preparing Deployment Artifact ==="
+
+                    cp "$JAR_FILE" "$ARTIFACT_NAME"
+
+                    ls -lh "$ARTIFACT_NAME"
+                '''
+            }
+        }
+
+
+        /*
+         * =====================================================
+         * ARCHIVE ARTIFACT
+         * =====================================================
+         *
+         * Jenkins stores the build artifact.
+         */
+
+        stage('Archive Artifact') {
+
+            steps {
+
+                archiveArtifacts artifacts: "${ARTIFACT_NAME}",
+                                 fingerprint: true
+            }
+        }
+
+
+        /*
+         * =====================================================
+         * DEPLOY
+         * =====================================================
+         */
+
+        stage('Deploy') {
+
+            steps {
+
+                sshagent(
+                    credentials: [env.SSH_CREDENTIALS]
+                ) {
+
+                    sh '''
+                        echo "=== Deployment Started ==="
+
+                        echo "Version: $VERSION"
+
+                        echo "Target Server: $DEPLOY_SERVER"
+
+
+                        echo
+                        echo "=== Copying Artifact ==="
+
+                        scp \
+                            -o StrictHostKeyChecking=no \
+                            "$ARTIFACT_NAME" \
+                            "$DEPLOY_USER@$DEPLOY_SERVER:$DEPLOY_PATH/$ARTIFACT_NAME"
+
+
+                        echo
+                        echo "=== Executing Deployment Script ==="
+
+                        ssh \
+                            -o StrictHostKeyChecking=no \
+                            "$DEPLOY_USER@$DEPLOY_SERVER" \
+                            "bash /opt/cicd-demo-service/scripts/deploy.sh \
+                            $DEPLOY_PATH/$ARTIFACT_NAME \
+                            $VERSION"
+                    }
+                }
+            }
+        }
+
+
+        /*
+         * =====================================================
+         * VERIFY DEPLOYMENT
+         * =====================================================
+         */
+
+        stage('Verify Deployment') {
+
+            steps {
+
+                sshagent(
+                    credentials: [env.SSH_CREDENTIALS]
+                ) {
+
+                    sh '''
+                        echo "=== Verifying Deployment ==="
+
+                        ssh \
+                            -o StrictHostKeyChecking=no \
+                            "$DEPLOY_USER@$DEPLOY_SERVER" \
+                            "systemctl is-active cicd-demo-service"
+                    '''
+                }
+            }
+        }
+    }
+
+
+    /*
+     * =====================================================
+     * PIPELINE RESULT
+     * =====================================================
+     */
+
+    post {
+
+        success {
+
+            echo '=========================================='
+            echo 'PIPELINE COMPLETED SUCCESSFULLY'
+            echo "Application: ${APP_NAME}"
+            echo "Version: ${VERSION}"
+            echo '=========================================='
+        }
+
+
+        failure {
+
+            echo '=========================================='
+            echo 'PIPELINE FAILED'
+            echo 'Check the failed stage in Jenkins.'
+            echo '=========================================='
+        }
+
+
+        always {
+
+            echo 'Pipeline execution completed.'
+        }
+    }
+}
