@@ -47,5 +47,20 @@ pipeline{
         '''
             }
         }
+
+        stage('Run Tests') {
+            steps {
+                sh '''
+            echo "===== Running Tests ====="
+
+            ./mvnw test
+
+            echo
+            echo "===== Test Reports Generated ====="
+
+            ls -la target/surefire-reports/ || true
+        '''
+            }
+        }
     }
 }
