@@ -18,9 +18,7 @@ pipeline{
         }
 
         stage('Verify Build Environment') {
-
             steps {
-
                 sh '''
             echo "===== Java Version ====="
             java --version
