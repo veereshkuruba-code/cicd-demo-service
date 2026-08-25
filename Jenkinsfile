@@ -4,7 +4,7 @@ pipeline{
 
     stages{
         stage('Verify workspace'){
-            step{
+            steps{
                 sh'''
                     
                     echo "=====current directory====="
