@@ -127,5 +127,19 @@ pipeline{
                 )
             }
         }
+
+        stage('Prepare Deployment') {
+
+            steps {
+
+                script {
+
+                    env.RELEASE_VERSION =
+                            "1.0.0-build-${BUILD_NUMBER}"
+
+                    echo "Release Version: ${env.RELEASE_VERSION}"
+                }
+            }
+        }
     }
 }
