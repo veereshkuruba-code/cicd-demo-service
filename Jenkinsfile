@@ -25,6 +25,10 @@ pipeline{
                 echo "====java version====="
                 java --version
                 
+                echo 
+                echo "==== Making maven wrapper Executable===="
+                chmod +x mvnw
+                
                 echo
                 echo "====== maven version===="
                 ./mvnw --version
