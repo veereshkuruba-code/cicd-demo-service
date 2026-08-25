@@ -27,7 +27,7 @@ pipeline{
                 
                 echo
                 echo "====== maven version===="
-                ./mvn --version
+                ./mvnw --version
                 
                 echo
                 echo "=====git version===="
