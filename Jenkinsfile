@@ -6,6 +6,10 @@ pipeline {
         APP_SERVER = '16.171.206.195'
         DEPLOY_USER = 'deploy'
         DEPLOY_BASE_DIR = '/opt/cicd-demo-service'
+
+        HEALTH_CHECK_PATH = '/actuator/health'
+        HEALTH_CHECK_MAX_ATTEMPTS = '12'
+        HEALTH_CHECK_INTERVAL_SECONDS = '5'
     }
 
     stages {
@@ -247,6 +251,76 @@ pipeline {
                     ls -l current
                     readlink -f current
                 "
+        '''
+            }
+        }
+
+        stage('Restart Application Service') {
+            steps {
+                sh '''
+            echo "===== Restarting Application Service ====="
+
+            ssh \
+              -o StrictHostKeyChecking=no \
+              ${DEPLOY_USER}@${APP_SERVER} \
+              "sudo /usr/bin/systemctl restart cicd-demo-service.service"
+
+            echo
+            echo "===== Checking Service Status ====="
+
+            ssh \
+              -o StrictHostKeyChecking=no \
+              ${DEPLOY_USER}@${APP_SERVER} \
+              "sudo /usr/bin/systemctl is-active cicd-demo-service.service"
+        '''
+            }
+        }
+
+        stage('Verify Application Health') {
+            steps {
+                sh '''
+            echo "===== Application Health Check ====="
+
+            ATTEMPT=1
+
+            while [ $ATTEMPT -le ${HEALTH_CHECK_MAX_ATTEMPTS} ]
+            do
+                echo
+                echo "Health check attempt ${ATTEMPT}/${HEALTH_CHECK_MAX_ATTEMPTS}"
+
+                HEALTH_RESPONSE=$(ssh \
+                    -o StrictHostKeyChecking=no \
+                    ${DEPLOY_USER}@${APP_SERVER} \
+                    "curl --silent --fail http://localhost:8080${HEALTH_CHECK_PATH}" \
+                    || true)
+
+                if echo "$HEALTH_RESPONSE" | grep -q '"status":"UP"'; then
+                    echo
+                    echo "========================================"
+                    echo "Application is HEALTHY"
+                    echo "Health Response: $HEALTH_RESPONSE"
+                    echo "========================================"
+
+                    exit 0
+                fi
+
+                echo "Application is not healthy yet."
+
+                if [ $ATTEMPT -lt ${HEALTH_CHECK_MAX_ATTEMPTS} ]; then
+                    echo "Waiting ${HEALTH_CHECK_INTERVAL_SECONDS} seconds before retry..."
+                    sleep ${HEALTH_CHECK_INTERVAL_SECONDS}
+                fi
+
+                ATTEMPT=$((ATTEMPT + 1))
+            done
+
+            echo
+            echo "========================================"
+            echo "ERROR: Application did not become healthy"
+            echo "after ${HEALTH_CHECK_MAX_ATTEMPTS} attempts."
+            echo "========================================"
+
+            exit 1
         '''
             }
         }
