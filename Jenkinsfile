@@ -6,8 +6,8 @@ pipeline {
         APP_SERVER = '16.171.206.195'
         DEPLOY_USER = 'deploy'
         DEPLOY_BASE_DIR = '/opt/cicd-demo-service'
-
-        HEALTH_CHECK_PATH = '/actuator/healthfail'
+        RELEASE_VERSION = "1.0.0-build-${BUILD_NUMBER}"
+        HEALTH_CHECK_PATH = '/actuator/health'
         HEALTH_CHECK_MAX_ATTEMPTS = '12'
         HEALTH_CHECK_INTERVAL_SECONDS = '5'
     }
@@ -139,12 +139,18 @@ pipeline {
         stage('Prepare Deployment') {
             steps {
                 script {
-                    env.RELEASE_VERSION = "1.0.0-build-${BUILD_NUMBER}"
-                    env.RELEASE_DIR = "${DEPLOY_BASE_DIR}/releases/${RELEASE_VERSION}"
 
-                    echo "===== Deployment Details ====="
+                    env.RELEASE_DIR =
+                            "${DEPLOY_BASE_DIR}/releases/${env.RELEASE_VERSION}"
+
+                    echo "========================================"
+                    echo "DEPLOYMENT DETAILS"
+                    echo "========================================"
+                    echo "Build Number   : ${BUILD_NUMBER}"
                     echo "Release Version: ${env.RELEASE_VERSION}"
-                    echo "Release Directory: ${env.RELEASE_DIR}"
+                    echo "Release Directory:"
+                    echo "${env.RELEASE_DIR}"
+                    echo "========================================"
                 }
             }
         }
@@ -451,12 +457,13 @@ pipeline {
             }
         }
 
-        always {
+        success {
             echo "========================================"
-            echo "PIPELINE EXECUTION COMPLETED"
-            echo "Build Number: ${BUILD_NUMBER}"
-            echo "Release Version: ${RELEASE_VERSION}"
-            echo "Final Build Result: ${currentBuild.currentResult}"
+            echo "PIPELINE COMPLETED SUCCESSFULLY"
+            echo "========================================"
+            echo "Build Number    : ${BUILD_NUMBER}"
+            echo "Release Version : ${env.RELEASE_VERSION}"
+            echo "Application Status: HEALTHY"
             echo "========================================"
         }
     }
