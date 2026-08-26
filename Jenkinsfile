@@ -153,27 +153,30 @@ pipeline{
             }
         }
 
-        stage('Copy Artifact to Application Server') {
+        stage('Deploy Release Artifact') {
             steps {
                 sh '''
-            echo "===== Jenkins Workspace ====="
-            pwd
+            RELEASE_DIR="/opt/cicd-demo-service/releases/${RELEASE_VERSION}"
+
+            echo "===== Preparing Release Directory ====="
+            echo "Release Version: ${RELEASE_VERSION}"
+            echo "Release Directory: ${RELEASE_DIR}"
+
+            ssh \
+              -o StrictHostKeyChecking=no \
+              deploy@16.171.206.195 \
+              "mkdir -p ${RELEASE_DIR}"
 
             echo
-            echo "===== Source Artifact ====="
-            ls -lh target/
-
-            echo
-            echo "===== Copying Artifact to Application Server ====="
+            echo "===== Copying Artifact ====="
 
             scp \
-                -v \
-                -o StrictHostKeyChecking=no \
-                target/cicd-demo-service-0.0.1-SNAPSHOT.jar \
-                deploy@16.171.206.195:/opt/cicd-demo-service/
+              -o StrictHostKeyChecking=no \
+              target/cicd-demo-service-0.0.1-SNAPSHOT.jar \
+              deploy@16.171.206.195:${RELEASE_DIR}/cicd-demo-service.jar
 
             echo
-            echo "===== Artifact Copy Completed ====="
+            echo "===== Release Artifact Copied Successfully ====="
         '''
             }
         }
