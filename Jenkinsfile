@@ -177,5 +177,37 @@ pipeline{
         '''
             }
         }
+
+        stage('Verify Remote Artifact') {
+            steps {
+                sh '''
+            ssh \
+              -o StrictHostKeyChecking=no \
+              deploy@16.171.206.195 \
+              "
+                echo '===== Remote Artifact Verification ====='
+
+                echo
+                echo '===== Deployment Directory ====='
+                ls -lh /opt/cicd-demo-service/
+
+                echo
+                echo '===== Checking Application JAR ====='
+
+                test -f /opt/cicd-demo-service/cicd-demo-service-0.0.1-SNAPSHOT.jar
+
+                echo 'Application JAR verified successfully'
+
+                echo
+                echo '===== Artifact Details ====='
+                ls -lh /opt/cicd-demo-service/cicd-demo-service-0.0.1-SNAPSHOT.jar
+
+                echo
+                echo '===== SHA-256 Checksum ====='
+                sha256sum /opt/cicd-demo-service/cicd-demo-service-0.0.1-SNAPSHOT.jar
+              "
+        '''
+            }
+        }
     }
 }
