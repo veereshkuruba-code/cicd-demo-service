@@ -141,5 +141,16 @@ pipeline{
                 }
             }
         }
+
+        stage('Test Application Server Connection') {
+            steps {
+                sh '''
+            ssh \
+              -o StrictHostKeyChecking=no \
+              deploy@16.171.206.195 \
+              "whoami && hostname"
+        '''
+            }
+        }
     }
 }
