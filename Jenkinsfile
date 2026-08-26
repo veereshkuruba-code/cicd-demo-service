@@ -7,7 +7,7 @@ pipeline {
         DEPLOY_USER = 'deploy'
         DEPLOY_BASE_DIR = '/opt/cicd-demo-service'
 
-        HEALTH_CHECK_PATH = '/actuator/health'
+        HEALTH_CHECK_PATH = '/actuator/healthfail'
         HEALTH_CHECK_MAX_ATTEMPTS = '12'
         HEALTH_CHECK_INTERVAL_SECONDS = '5'
     }
@@ -298,49 +298,62 @@ pipeline {
         stage('Verify Application Health') {
             steps {
                 sh '''
-                    echo "===== Application Health Check ====="
+            echo
+            echo "========================================"
+            echo "     APPLICATION HEALTH VERIFICATION"
+            echo "========================================"
+            echo "Endpoint : http://localhost:8080${HEALTH_CHECK_PATH}"
+            echo "Attempts : ${HEALTH_CHECK_MAX_ATTEMPTS}"
+            echo "Interval : ${HEALTH_CHECK_INTERVAL_SECONDS} seconds"
+            echo "========================================"
 
-                    ATTEMPT=1
+            ATTEMPT=1
 
-                    while [ $ATTEMPT -le ${HEALTH_CHECK_MAX_ATTEMPTS} ]
-                    do
-                        echo
-                        echo "Health check attempt ${ATTEMPT}/${HEALTH_CHECK_MAX_ATTEMPTS}"
+            while [ $ATTEMPT -le ${HEALTH_CHECK_MAX_ATTEMPTS} ]
+            do
+                echo
+                echo "----------------------------------------"
+                echo "Health Check Attempt: $ATTEMPT/${HEALTH_CHECK_MAX_ATTEMPTS}"
+                echo "----------------------------------------"
 
-                        HEALTH_RESPONSE=$(ssh \
-                            -o StrictHostKeyChecking=no \
-                            ${DEPLOY_USER}@${APP_SERVER} \
-                            "curl --silent --fail http://localhost:8080${HEALTH_CHECK_PATH}" \
-                            || true)
+                HEALTH_RESPONSE=$(ssh \
+                    -o StrictHostKeyChecking=no \
+                    ${DEPLOY_USER}@${APP_SERVER} \
+                    "curl --silent --fail http://localhost:8080${HEALTH_CHECK_PATH}" \
+                    || true)
 
-                        if echo "$HEALTH_RESPONSE" | grep -q '"status":"UP"'; then
-                            echo
-                            echo "========================================"
-                            echo "Application is HEALTHY"
-                            echo "Health Response: $HEALTH_RESPONSE"
-                            echo "========================================"
-
-                            exit 0
-                        fi
-
-                        echo "Application is not healthy yet."
-
-                        if [ $ATTEMPT -lt ${HEALTH_CHECK_MAX_ATTEMPTS} ]; then
-                            echo "Waiting ${HEALTH_CHECK_INTERVAL_SECONDS} seconds before retry..."
-                            sleep ${HEALTH_CHECK_INTERVAL_SECONDS}
-                        fi
-
-                        ATTEMPT=$((ATTEMPT + 1))
-                    done
+                if echo "$HEALTH_RESPONSE" | grep -q '"status":"UP"'; then
 
                     echo
                     echo "========================================"
-                    echo "ERROR: Application did not become healthy"
-                    echo "after ${HEALTH_CHECK_MAX_ATTEMPTS} attempts."
+                    echo "       APPLICATION IS HEALTHY"
+                    echo "========================================"
+                    echo "Response: $HEALTH_RESPONSE"
                     echo "========================================"
 
-                    exit 1
-                '''
+                    exit 0
+                fi
+
+                echo "Status: NOT READY"
+
+                if [ $ATTEMPT -lt ${HEALTH_CHECK_MAX_ATTEMPTS} ]; then
+                    echo "Action: Waiting ${HEALTH_CHECK_INTERVAL_SECONDS} seconds before retry..."
+                    sleep ${HEALTH_CHECK_INTERVAL_SECONDS}
+                fi
+
+                ATTEMPT=$((ATTEMPT + 1))
+            done
+
+            echo
+            echo "========================================"
+            echo "      APPLICATION HEALTH CHECK FAILED"
+            echo "========================================"
+            echo "Attempts exhausted: ${HEALTH_CHECK_MAX_ATTEMPTS}"
+            echo "Endpoint did not become healthy."
+            echo "========================================"
+
+            exit 1
+        '''
             }
         }
     }
