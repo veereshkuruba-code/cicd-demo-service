@@ -1,125 +1,129 @@
-
-pipeline{
+pipeline {
     agent any
 
-    stages{
-        stage('Verify workspace'){
-            steps{
-                sh'''
-                    
-                    echo "=====current directory====="
+    environment {
+        APP_NAME = 'cicd-demo-service'
+        APP_SERVER = '16.171.206.195'
+        DEPLOY_USER = 'deploy'
+        DEPLOY_BASE_DIR = '/opt/cicd-demo-service'
+    }
+
+    stages {
+
+        stage('Verify Workspace') {
+            steps {
+                sh '''
+                    echo "===== Current Directory ====="
                     pwd
-                    echo "Workspace Contents"
-                    
+
+                    echo
+                    echo "===== Workspace Contents ====="
                     ls -la
-                      
-                  '''
+                '''
             }
         }
 
         stage('Verify Build Environment') {
             steps {
                 sh '''
-            echo "===== Java Version ====="
-            java --version
+                    echo "===== Java Version ====="
+                    java --version
 
-            echo
-            echo "===== Making Maven Wrapper Executable ====="
-            chmod +x mvnw
+                    echo
+                    echo "===== Making Maven Wrapper Executable ====="
+                    chmod +x mvnw
 
-            echo
-            echo "===== Maven Version ====="
-            ./mvnw --version
+                    echo
+                    echo "===== Maven Version ====="
+                    ./mvnw --version
 
-            echo
-            echo "===== Git Version ====="
-            git --version
-        '''
+                    echo
+                    echo "===== Git Version ====="
+                    git --version
+                '''
             }
         }
 
         stage('Compile Application') {
             steps {
                 sh '''
-            echo "===== Compiling Application ====="
+                    echo "===== Compiling Application ====="
 
-            ./mvnw clean compile
-        '''
+                    ./mvnw clean compile
+                '''
             }
         }
 
         stage('Run Tests') {
             steps {
                 sh '''
-            echo "===== Running Tests ====="
+                    echo "===== Running Tests ====="
 
-            ./mvnw test
+                    ./mvnw test
 
-            echo
-            echo "===== Test Reports Generated ====="
+                    echo
+                    echo "===== Test Reports Generated ====="
 
-            ls -la target/surefire-reports/ || true
-        '''
+                    ls -la target/surefire-reports/
+                '''
             }
         }
 
-        stage('Build Application'){
+        stage('Build Application') {
+            steps {
+                sh '''
+                    echo "===== Building Application ====="
 
-            steps{
-                sh'''
-                    echo "====Building Application"
                     ./mvnw clean package -DskipTests
-                    
-                    echo 
+
+                    echo
                     echo "===== Build Completed Successfully ====="
                 '''
             }
         }
 
-        stage('Verify Artifact') {
-
+        stage('Verify Build Artifact') {
             steps {
+                script {
+                    def jarFile = sh(
+                            script: '''
+                            find target \
+                                -maxdepth 1 \
+                                -type f \
+                                -name 'cicd-demo-service-*.jar' \
+                                ! -name '*.original' \
+                                | head -n 1
+                        ''',
+                            returnStdout: true
+                    ).trim()
 
-                sh '''
-            echo "===== Verifying Build Artifact ====="
+                    if (!jarFile) {
+                        error('Application JAR not found')
+                    }
 
-            echo
-            echo "===== Target Directory Contents ====="
-            ls -lh target/
+                    env.JAR_FILE = jarFile
 
-            echo
-            echo "===== Checking Application JAR ====="
+                    sh '''
+                        echo "===== Verifying Build Artifact ====="
 
-            JAR_FILE=$(find target \
-                -maxdepth 1 \
-                -type f \
-                -name 'cicd-demo-service-*.jar' \
-                ! -name '*.original' \
-                | head -n 1)
+                        echo
+                        echo "Application JAR:"
+                        echo "$JAR_FILE"
 
-            if [ -z "$JAR_FILE" ]; then
-                echo "ERROR: Application JAR not found"
-                exit 1
-            fi
+                        echo
+                        echo "===== Artifact Details ====="
+                        ls -lh "$JAR_FILE"
 
-            echo "Application JAR found:"
-            echo "$JAR_FILE"
-
-            echo
-            echo "===== Artifact Details ====="
-            ls -lh "$JAR_FILE"
-
-            echo
-            echo "===== SHA-256 Checksum ====="
-            sha256sum "$JAR_FILE"
-        '''
+                        echo
+                        echo "===== SHA-256 Checksum ====="
+                        sha256sum "$JAR_FILE"
+                    '''
+                }
             }
         }
 
         stage('Archive Artifact') {
-
             steps {
-
                 archiveArtifacts(
                         artifacts: 'target/cicd-demo-service-*.jar',
                         excludes: 'target/*.jar.original',
@@ -129,15 +133,14 @@ pipeline{
         }
 
         stage('Prepare Deployment') {
-
             steps {
-
                 script {
+                    env.RELEASE_VERSION = "1.0.0-build-${BUILD_NUMBER}"
+                    env.RELEASE_DIR = "${DEPLOY_BASE_DIR}/releases/${RELEASE_VERSION}"
 
-                    env.RELEASE_VERSION =
-                            "1.0.0-build-${BUILD_NUMBER}"
-
+                    echo "===== Deployment Details ====="
                     echo "Release Version: ${env.RELEASE_VERSION}"
+                    echo "Release Directory: ${env.RELEASE_DIR}"
                 }
             }
         }
@@ -145,71 +148,85 @@ pipeline{
         stage('Test Application Server Connection') {
             steps {
                 sh '''
-            ssh \
-              -o StrictHostKeyChecking=no \
-              deploy@16.171.206.195 \
-              "whoami && hostname"
-        '''
+                    echo "===== Testing Application Server Connection ====="
+
+                    ssh \
+                        -o StrictHostKeyChecking=no \
+                        ${DEPLOY_USER}@${APP_SERVER} \
+                        "whoami && hostname"
+                '''
+            }
+        }
+
+        stage('Prepare Remote Release Directory') {
+            steps {
+                sh '''
+                    echo "===== Preparing Remote Release Directory ====="
+
+                    ssh \
+                        -o StrictHostKeyChecking=no \
+                        ${DEPLOY_USER}@${APP_SERVER} \
+                        "
+                            mkdir -p ${RELEASE_DIR}
+
+                            echo 'Release directory created:'
+                            ls -ld ${RELEASE_DIR}
+                        "
+                '''
             }
         }
 
         stage('Deploy Release Artifact') {
             steps {
                 sh '''
-            RELEASE_DIR="/opt/cicd-demo-service/releases/${RELEASE_VERSION}"
+                    echo "===== Deploying Release Artifact ====="
 
-            echo "===== Preparing Release Directory ====="
-            echo "Release Version: ${RELEASE_VERSION}"
-            echo "Release Directory: ${RELEASE_DIR}"
+                    echo "Source Artifact:"
+                    echo "$JAR_FILE"
 
-            ssh \
-              -o StrictHostKeyChecking=no \
-              deploy@16.171.206.195 \
-              "mkdir -p ${RELEASE_DIR}"
+                    echo
+                    echo "Destination:"
+                    echo "${DEPLOY_USER}@${APP_SERVER}:${RELEASE_DIR}/cicd-demo-service.jar"
 
-            echo
-            echo "===== Copying Artifact ====="
+                    scp \
+                        -o StrictHostKeyChecking=no \
+                        "$JAR_FILE" \
+                        ${DEPLOY_USER}@${APP_SERVER}:${RELEASE_DIR}/cicd-demo-service.jar
 
-            scp \
-              -o StrictHostKeyChecking=no \
-              target/cicd-demo-service-0.0.1-SNAPSHOT.jar \
-              deploy@16.171.206.195:${RELEASE_DIR}/cicd-demo-service.jar
-
-            echo
-            echo "===== Release Artifact Copied Successfully ====="
-        '''
+                    echo
+                    echo "===== Artifact Copy Completed Successfully ====="
+                '''
             }
         }
 
         stage('Verify Remote Artifact') {
             steps {
                 sh '''
-            ssh \
-              -o StrictHostKeyChecking=no \
-              deploy@16.171.206.195 \
-              "
-                echo '===== Remote Artifact Verification ====='
+                    echo "===== Verifying Remote Artifact ====="
 
-                echo
-                echo '===== Deployment Directory ====='
-                ls -lh /opt/cicd-demo-service/
+                    ssh \
+                        -o StrictHostKeyChecking=no \
+                        ${DEPLOY_USER}@${APP_SERVER} \
+                        "
+                            echo '===== Release Directory ====='
+                            ls -lh ${RELEASE_DIR}
 
-                echo
-                echo '===== Checking Application JAR ====='
+                            echo
+                            echo '===== Checking Application JAR ====='
 
-                test -f /opt/cicd-demo-service/cicd-demo-service-0.0.1-SNAPSHOT.jar
+                            test -f ${RELEASE_DIR}/cicd-demo-service.jar
 
-                echo 'Application JAR verified successfully'
+                            echo 'Application JAR verified successfully'
 
-                echo
-                echo '===== Artifact Details ====='
-                ls -lh /opt/cicd-demo-service/cicd-demo-service-0.0.1-SNAPSHOT.jar
+                            echo
+                            echo '===== Artifact Details ====='
+                            ls -lh ${RELEASE_DIR}/cicd-demo-service.jar
 
-                echo
-                echo '===== SHA-256 Checksum ====='
-                sha256sum /opt/cicd-demo-service/cicd-demo-service-0.0.1-SNAPSHOT.jar
-              "
-        '''
+                            echo
+                            echo '===== SHA-256 Checksum ====='
+                            sha256sum ${RELEASE_DIR}/cicd-demo-service.jar
+                        "
+                '''
             }
         }
     }
