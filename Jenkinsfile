@@ -366,12 +366,7 @@ pipeline {
 
     post {
 
-        success {
-            echo "========================================"
-            echo "PIPELINE COMPLETED SUCCESSFULLY"
-            echo "Release ${RELEASE_VERSION} is HEALTHY"
-            echo "========================================"
-        }
+
 
         failure {
             script {
