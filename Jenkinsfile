@@ -152,5 +152,30 @@ pipeline{
         '''
             }
         }
+
+        stage('Copy Artifact to Application Server') {
+            steps {
+                sh '''
+            echo "===== Jenkins Workspace ====="
+            pwd
+
+            echo
+            echo "===== Source Artifact ====="
+            ls -lh target/
+
+            echo
+            echo "===== Copying Artifact to Application Server ====="
+
+            scp \
+                -v \
+                -o StrictHostKeyChecking=no \
+                target/cicd-demo-service-0.0.1-SNAPSHOT.jar \
+                deploy@16.171.206.195:/opt/cicd-demo-service/
+
+            echo
+            echo "===== Artifact Copy Completed ====="
+        '''
+            }
+        }
     }
 }
