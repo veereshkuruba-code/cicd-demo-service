@@ -234,6 +234,25 @@ pipeline {
             }
         }
 
+        stage('Capture Previous Release') {
+            steps {
+                script {
+                    env.PREVIOUS_RELEASE = sh(
+                            script: """
+                    ssh \
+                        -o StrictHostKeyChecking=no \
+                        ${DEPLOY_USER}@${APP_SERVER} \
+                        'if [ -L ${DEPLOY_BASE_DIR}/current ]; then readlink ${DEPLOY_BASE_DIR}/current; fi'
+                """,
+                            returnStdout: true
+                    ).trim()
+
+                    echo "===== Previous Release ====="
+                    echo "Previous Release: ${env.PREVIOUS_RELEASE ?: 'NONE'}"
+                }
+            }
+        }
+
         stage('Activate Release') {
             steps {
                 sh '''
@@ -279,50 +298,153 @@ pipeline {
         stage('Verify Application Health') {
             steps {
                 sh '''
-            echo "===== Application Health Check ====="
+                    echo "===== Application Health Check ====="
 
-            ATTEMPT=1
+                    ATTEMPT=1
 
-            while [ $ATTEMPT -le ${HEALTH_CHECK_MAX_ATTEMPTS} ]
-            do
-                echo
-                echo "Health check attempt ${ATTEMPT}/${HEALTH_CHECK_MAX_ATTEMPTS}"
+                    while [ $ATTEMPT -le ${HEALTH_CHECK_MAX_ATTEMPTS} ]
+                    do
+                        echo
+                        echo "Health check attempt ${ATTEMPT}/${HEALTH_CHECK_MAX_ATTEMPTS}"
 
-                HEALTH_RESPONSE=$(ssh \
-                    -o StrictHostKeyChecking=no \
-                    ${DEPLOY_USER}@${APP_SERVER} \
-                    "curl --silent --fail http://localhost:8080${HEALTH_CHECK_PATH}" \
-                    || true)
+                        HEALTH_RESPONSE=$(ssh \
+                            -o StrictHostKeyChecking=no \
+                            ${DEPLOY_USER}@${APP_SERVER} \
+                            "curl --silent --fail http://localhost:8080${HEALTH_CHECK_PATH}" \
+                            || true)
 
-                if echo "$HEALTH_RESPONSE" | grep -q '"status":"UP"'; then
+                        if echo "$HEALTH_RESPONSE" | grep -q '"status":"UP"'; then
+                            echo
+                            echo "========================================"
+                            echo "Application is HEALTHY"
+                            echo "Health Response: $HEALTH_RESPONSE"
+                            echo "========================================"
+
+                            exit 0
+                        fi
+
+                        echo "Application is not healthy yet."
+
+                        if [ $ATTEMPT -lt ${HEALTH_CHECK_MAX_ATTEMPTS} ]; then
+                            echo "Waiting ${HEALTH_CHECK_INTERVAL_SECONDS} seconds before retry..."
+                            sleep ${HEALTH_CHECK_INTERVAL_SECONDS}
+                        fi
+
+                        ATTEMPT=$((ATTEMPT + 1))
+                    done
+
                     echo
                     echo "========================================"
-                    echo "Application is HEALTHY"
-                    echo "Health Response: $HEALTH_RESPONSE"
+                    echo "ERROR: Application did not become healthy"
+                    echo "after ${HEALTH_CHECK_MAX_ATTEMPTS} attempts."
                     echo "========================================"
 
-                    exit 0
-                fi
-
-                echo "Application is not healthy yet."
-
-                if [ $ATTEMPT -lt ${HEALTH_CHECK_MAX_ATTEMPTS} ]; then
-                    echo "Waiting ${HEALTH_CHECK_INTERVAL_SECONDS} seconds before retry..."
-                    sleep ${HEALTH_CHECK_INTERVAL_SECONDS}
-                fi
-
-                ATTEMPT=$((ATTEMPT + 1))
-            done
-
-            echo
-            echo "========================================"
-            echo "ERROR: Application did not become healthy"
-            echo "after ${HEALTH_CHECK_MAX_ATTEMPTS} attempts."
-            echo "========================================"
-
-            exit 1
-        '''
+                    exit 1
+                '''
             }
+        }
+    }
+
+    post {
+
+        success {
+            echo "========================================"
+            echo "PIPELINE COMPLETED SUCCESSFULLY"
+            echo "Release ${RELEASE_VERSION} is HEALTHY"
+            echo "========================================"
+        }
+
+        failure {
+            script {
+
+                echo "========================================"
+                echo "PIPELINE FAILED"
+                echo "Starting rollback process..."
+                echo "========================================"
+
+                if (!env.PREVIOUS_RELEASE?.trim()) {
+
+                    echo "No previous release available."
+                    echo "Rollback cannot be performed."
+
+                } else {
+
+                    echo "Rolling back to: ${env.PREVIOUS_RELEASE}"
+
+                    sh """
+                    ssh \
+                        -o StrictHostKeyChecking=no \
+                        ${DEPLOY_USER}@${APP_SERVER} \
+                        '
+                            cd ${DEPLOY_BASE_DIR}
+
+                            ln -sfn ${PREVIOUS_RELEASE} current
+
+                            echo "===== Rolled Back Release ====="
+                            ls -l current
+                            readlink -f current
+                        '
+                """
+
+                    echo "===== Restarting Rolled Back Application ====="
+
+                    sh """
+                    ssh \
+                        -o StrictHostKeyChecking=no \
+                        ${DEPLOY_USER}@${APP_SERVER} \
+                        'sudo /usr/bin/systemctl restart cicd-demo-service.service'
+                """
+
+                    echo "===== Verifying Rolled Back Application ====="
+
+                    sh """
+                    ATTEMPT=1
+                    ROLLBACK_SUCCESS=false
+
+                    while [ \$ATTEMPT -le ${HEALTH_CHECK_MAX_ATTEMPTS} ]
+                    do
+                        echo "Rollback health check attempt \$ATTEMPT/${HEALTH_CHECK_MAX_ATTEMPTS}"
+
+                        HEALTH_RESPONSE=\$(ssh \
+                            -o StrictHostKeyChecking=no \
+                            ${DEPLOY_USER}@${APP_SERVER} \
+                            'curl --silent --fail http://localhost:8080${HEALTH_CHECK_PATH}' \
+                            || true)
+
+                        if echo "\$HEALTH_RESPONSE" | grep -q '"status":"UP"'; then
+
+                            echo "========================================"
+                            echo "ROLLBACK SUCCESSFUL"
+                            echo "Previous application is HEALTHY"
+                            echo "========================================"
+
+                            ROLLBACK_SUCCESS=true
+                            break
+                        fi
+
+                        if [ \$ATTEMPT -lt ${HEALTH_CHECK_MAX_ATTEMPTS} ]; then
+                            sleep ${HEALTH_CHECK_INTERVAL_SECONDS}
+                        fi
+
+                        ATTEMPT=\$((ATTEMPT + 1))
+                    done
+
+                    if [ "\$ROLLBACK_SUCCESS" != "true" ]; then
+                        echo "CRITICAL: ROLLBACK ALSO FAILED"
+                        exit 1
+                    fi
+                """
+                }
+            }
+        }
+
+        always {
+            echo "========================================"
+            echo "PIPELINE EXECUTION COMPLETED"
+            echo "Build Number: ${BUILD_NUMBER}"
+            echo "Release Version: ${RELEASE_VERSION}"
+            echo "Final Build Result: ${currentBuild.currentResult}"
+            echo "========================================"
         }
     }
 }
