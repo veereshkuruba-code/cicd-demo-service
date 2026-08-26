@@ -421,7 +421,7 @@ pipeline {
                         HEALTH_RESPONSE=\$(ssh \
                             -o StrictHostKeyChecking=no \
                             ${DEPLOY_USER}@${APP_SERVER} \
-                            'curl --silent --fail http://localhost:8080${HEALTH_CHECK_PATH}' \
+                            'curl --silent --fail http://localhost:8080/actuator/health' \
                             || true)
 
                         if echo "\$HEALTH_RESPONSE" | grep -q '"status":"UP"'; then
