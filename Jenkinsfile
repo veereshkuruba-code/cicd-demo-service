@@ -229,5 +229,26 @@ pipeline {
                 '''
             }
         }
+
+        stage('Activate Release') {
+            steps {
+                sh '''
+            echo "===== Activating Release ====="
+
+            ssh \
+                -o StrictHostKeyChecking=no \
+                ${DEPLOY_USER}@${APP_SERVER} \
+                "
+                    cd ${DEPLOY_BASE_DIR}
+
+                    ln -sfn releases/${RELEASE_VERSION} current
+
+                    echo '===== Active Release ====='
+                    ls -l current
+                    readlink -f current
+                "
+        '''
+            }
+        }
     }
 }
